@@ -106,8 +106,16 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 
 	searchURL := makeSearchURL(keyword)
 	page.MustNavigate(searchURL)
-	page.MustWaitStable()
-	page.MustWait(`() => window.__INITIAL_STATE__ !== undefined`)
+	// 搜索结果页会持续预加载、滚动监听，永不"stable"——直接改用 JS 条件等真实数据就绪
+	// （等 __INITIAL_STATE__.search.feeds 出现且至少有 1 条 feed，更贴合 PR #797 的本意）
+	page.MustWait(`() => {
+		const s = window.__INITIAL_STATE__;
+		if (!s || !s.search) return false;
+		const f = s.search.feeds;
+		if (!f) return false;
+		const v = f.value !== undefined ? f.value : f._value;
+		return Array.isArray(v) && v.length > 0;
+	}`)
 	humanize.Delay(ctx, humanize.AfterNavigate)
 
 	if len(pending) > 0 {
